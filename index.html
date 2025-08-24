@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF神轉WORD／PPT生成系統</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- pdf.js (for reading PDFs) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+    <!-- docx.js (for Word generation) -->
+    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
+    <!-- PptxGenJS (for PPT generation) -->
+    <script src="https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <!-- FileSaver.js (for saving files) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body { font-family: 'Poppins', 'Noto Sans TC', sans-serif; background-color: #f4f7f9; }
+        .btn { transition: all 0.3s ease; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; font-weight: 500; padding: 0.75rem 1.5rem; border-radius: 0.5rem; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #1d4ed8; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn-secondary { background: #4b5563; color: white; }
+        .btn-secondary:hover:not(:disabled) { background: #1f2937; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; box-shadow: none; }
+        #drop-zone { border: 2px dashed #d1d5db; border-radius: 0.75rem; padding: 1.5rem; text-align: center; transition: all 0.3s ease; background-color: #fff; cursor: pointer; }
+        #drop-zone.drag-over { border-color: #2563eb; background-color: #eff6ff; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); display: none; justify-content: center; align-items: center; z-index: 1000; animation: fadeIn 0.3s; }
+        .modal-content { background: #fff; padding: 30px; border-radius: 16px; max-width: 600px; width: 90%; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto; }
+        .modal-close { position: absolute; top: 10px; right: 15px; font-size: 1.8rem; color: #9ca3af; cursor: pointer; }
+        .tab-button { padding: 0.5rem 1rem; font-weight: 500; border-radius: 0.5rem 0.5rem 0 0; cursor: pointer; transition: all 0.3s ease; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; background: #e5e7eb; color: #4b5563; }
+        .tab-button.active { background: #ffffff; color: #2563eb; border-color: #d1d5db; }
+        .editor-pane { display: none; height: 100%;} /* MODIFICATION: Add height: 100% */
+        .editor-pane.active { display: block; }
+        #mascot { position: fixed; bottom: 20px; left: 20px; width: 120px; height: auto; cursor: pointer; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 999; }
+        #mascot:hover { transform: scale(1.15) rotate(-8deg); }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @media (max-width: 768px) { #mascot { width: 80px; } }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-3"><i class="fa-solid fa-wand-magic-sparkles text-blue-600"></i>PDF神轉WORD／PPT生成系統</h1>
+            <p class="text-lg text-gray-600">透過AI神輔助讓PDF內容一鍵生成精美文件</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Panel: Upload and Settings -->
+            <section class="bg-white rounded-xl shadow-lg p-6 flex flex-col gap-6">
+                <h2 class="text-2xl font-semibold text-gray-800 border-b pb-3">步驟 1：上傳與設定</h2>
+                <div id="drop-zone">
+                    <i class="fas fa-file-pdf text-5xl text-red-500 mb-4"></i>
+                    <p class="text-gray-600">將 PDF 檔案拖曳至此，或點擊選擇</p>
+                    <p id="pdf-info" class="text-sm text-blue-600 font-semibold mt-2 h-5"></p>
+                    <input type="file" id="pdf-upload" accept=".pdf" class="hidden">
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="user-api-key" class="font-medium text-gray-700">Google Gemini API 金鑰</label>
+                        <span id="api-tutorial-link" class="text-sm text-blue-600 hover:underline cursor-pointer">(如何取得？)</span>
+                    </div>
+                    <input type="password" id="user-api-key" placeholder="貼上您的 API 金鑰" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="mt-auto">
+                    <button id="start-conversion-btn" class="btn btn-primary w-full text-lg" disabled>
+                        <i class="fa-solid fa-brain"></i> 開始AI神轉換
+                    </button>
+                </div>
+                <div class="border-t pt-4">
+                    <h3 class="font-medium text-gray-700 mb-2">處理狀態</h3>
+                    <div id="status-log" class="w-full h-32 p-3 border border-gray-200 rounded-lg bg-gray-900 text-white font-mono text-sm overflow-y-auto">
+                        <p class="text-gray-400">&gt; 等待上傳 PDF 檔案...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: AI Output Editor and Download -->
+            <section class="bg-white rounded-xl shadow-lg p-6 flex flex-col gap-6">
+                <h2 class="text-2xl font-semibold text-gray-800 border-b pb-3">步驟 2：預覽、編輯與下載</h2>
+                <div class="flex border-b border-gray-200">
+                    <button id="word-tab" class="tab-button active"><i class="fas fa-file-word mr-2"></i>Word 預覽</button>
+                    <button id="ppt-tab" class="tab-button ml-1"><i class="fas fa-file-powerpoint mr-2"></i>PPT 預覽</button>
+                </div>
+                <!-- MODIFICATION: Make this container flex-grow -->
+                <div class="flex-grow min-h-[400px]">
+                    <div id="word-editor-pane" class="editor-pane active">
+                        <textarea id="word-markdown-editor" class="w-full h-full p-3 border border-gray-200 rounded-b-lg rounded-tr-lg bg-gray-50 text-base font-mono resize-none" placeholder="AI 轉換後的 Word (Markdown 格式) 將顯示於此，您可在此編輯..."></textarea>
+                    </div>
+                    <div id="ppt-editor-pane" class="editor-pane">
+                         <textarea id="ppt-markdown-editor" class="w-full h-full p-3 border border-gray-200 rounded-b-lg rounded-tr-lg bg-gray-50 text-base font-mono resize-none" placeholder="AI 轉換後的 PPT (Markdown 格式) 將顯示於此，您可在此編輯..."></textarea>
+                    </div>
+                </div>
+                <div class="mt-auto pt-6 border-t border-gray-200">
+                     <p class="text-center text-gray-600 mb-4">編輯完成後，即可下載最終檔案</p>
+                    <div class="flex flex-wrap justify-center gap-4">
+                        <button id="download-word-btn" class="btn btn-secondary" disabled>
+                            <i class="fas fa-download mr-2"></i> 下載 Word
+                        </button>
+                        <button id="download-ppt-btn" class="btn btn-secondary" disabled>
+                            <i class="fas fa-download mr-2"></i> 下載 PPT
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+    
+    <footer class="text-center mt-10 text-gray-500 text-sm pb-6">Copyright © Liyuchiutiger Gongminshen</footer>
+
+    <img id="mascot" src="image/LiyuChillGuy.svg" alt="LiyuChillGuy Mascot">
+
+    <div class="modal-overlay" id="api-key-modal">
+        <div class="modal-content">
+            <span class="modal-close" id="api-key-modal-close">&times;</span>
+            <h3 class="text-xl font-bold text-blue-600 mb-4">如何取得免費的 Google Gemini API 金鑰？</h3>
+            <div class="space-y-3 text-gray-700">
+                <p>按照以下簡單步驟，即可取得您自己的免費金鑰：</p>
+                <ol class="list-decimal list-inside space-y-2">
+                    <li>前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 hover:underline font-semibold">Google AI Studio 的 API 金鑰頁面</a>。</li>
+                    <li>使用您的 Google 帳號登入。</li>
+                    <li>點擊頁面上的 <strong>「建立 API 金鑰」(Create API key)</strong> 按鈕。</li>
+                    <li>系統會立即產生一組新的金鑰。點擊金鑰旁邊的複製圖示。</li>
+                    <li>回到本頁面，將複製的金鑰貼到輸入框中即可！</li>
+                </ol>
+                <p class="text-sm text-yellow-700 bg-yellow-50 p-3 rounded-lg"><strong>提醒：</strong>請妥善保管您的 API 金鑰，不要與他人分享。</p>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    'use strict';
+
+    const ui = {
+        dropZone: document.getElementById('drop-zone'),
+        pdfUpload: document.getElementById('pdf-upload'),
+        pdfInfo: document.getElementById('pdf-info'),
+        apiKeyInput: document.getElementById('user-api-key'),
+        statusLog: document.getElementById('status-log'),
+        startConversionBtn: document.getElementById('start-conversion-btn'),
+        downloadWordBtn: document.getElementById('download-word-btn'),
+        downloadPptBtn: document.getElementById('download-ppt-btn'),
+        apiKeyModal: document.getElementById('api-key-modal'),
+        openApiKeyModalLink: document.getElementById('api-tutorial-link'),
+        closeApiKeyModalBtn: document.getElementById('api-key-modal-close'),
+        wordTab: document.getElementById('word-tab'),
+        pptTab: document.getElementById('ppt-tab'),
+        wordEditorPane: document.getElementById('word-editor-pane'),
+        pptEditorPane: document.getElementById('ppt-editor-pane'),
+        wordMarkdownEditor: document.getElementById('word-markdown-editor'),
+        pptMarkdownEditor: document.getElementById('ppt-markdown-editor'),
+    };
+
+    const state = { extractedText: '', fileName: '' };
+    const libraries = { pdfjsLib: window.pdfjsLib, docx: window.docx, PptxGenJS: window.PptxGenJS, saveAs: window.saveAs };
+
+    function init() {
+        logStatus('系統初始化完成，請上傳 PDF 檔案。');
+        bindEvents();
+    }
+
+    function bindEvents() {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => ui.dropZone.addEventListener(e, preventDefaults, false));
+        ['dragenter', 'dragover'].forEach(e => ui.dropZone.addEventListener(e, () => ui.dropZone.classList.add('drag-over'), false));
+        ['dragleave', 'drop'].forEach(e => ui.dropZone.addEventListener(e, () => ui.dropZone.classList.remove('drag-over'), false));
+        ui.dropZone.addEventListener('drop', e => handleFile(e.dataTransfer.files[0]), false);
+        ui.dropZone.addEventListener('click', () => ui.pdfUpload.click());
+        ui.pdfUpload.addEventListener('change', e => handleFile(e.target.files[0]));
+        ui.openApiKeyModalLink.addEventListener('click', () => ui.apiKeyModal.style.display = 'flex');
+        ui.closeApiKeyModalBtn.addEventListener('click', () => ui.apiKeyModal.style.display = 'none');
+        ui.apiKeyModal.addEventListener('click', e => { if (e.target === ui.apiKeyModal) ui.apiKeyModal.style.display = 'none'; });
+        ui.startConversionBtn.addEventListener('click', startAiProcessing);
+        ui.downloadWordBtn.addEventListener('click', handleWordDownload);
+        ui.downloadPptBtn.addEventListener('click', handlePptDownload);
+        ui.wordTab.addEventListener('click', () => switchTab('word'));
+        ui.pptTab.addEventListener('click', () => switchTab('ppt'));
+    }
+
+    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+    
+    function switchTab(tabName) {
+        const isWord = tabName === 'word';
+        ui.wordTab.classList.toggle('active', isWord);
+        ui.pptTab.classList.toggle('active', !isWord);
+        ui.wordEditorPane.classList.toggle('active', isWord);
+        ui.pptEditorPane.classList.toggle('active', !isWord);
+    }
+
+    async function handleFile(file) {
+        if (!file || !file.type.includes('pdf')) { logStatus('錯誤：請上傳一個 PDF 檔案。', 'error'); return; }
+        resetState();
+        state.fileName = file.name;
+        ui.pdfInfo.textContent = `已選擇：${state.fileName}`;
+        logStatus(`正在讀取檔案：${state.fileName}...`);
+        try {
+            const fileReader = new FileReader();
+            fileReader.onload = async (event) => {
+                const typedarray = new Uint8Array(event.target.result);
+                const pdf = await libraries.pdfjsLib.getDocument(typedarray).promise;
+                logStatus(`PDF 總頁數：${pdf.numPages}。開始提取文字...`);
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    fullText += textContent.items.map(item => item.str).join(' ') + '\n\n';
+                }
+                state.extractedText = fullText.trim();
+                logStatus('文字提取完成。請確認 API 金鑰後開始轉換。', 'success');
+                ui.startConversionBtn.disabled = false;
+            };
+            fileReader.readAsArrayBuffer(file);
+        } catch (error) { logStatus(`PDF 讀取或解析失敗: ${error.message}`, 'error'); }
+    }
+    
+    function resetState() {
+        state.extractedText = '';
+        state.fileName = '';
+        ui.pdfInfo.textContent = '';
+        ui.wordMarkdownEditor.value = '';
+        ui.pptMarkdownEditor.value = '';
+        ui.startConversionBtn.disabled = true;
+        ui.downloadWordBtn.disabled = true;
+        ui.downloadPptBtn.disabled = true;
+    }
+
+    async function startAiProcessing() {
+        const apiKey = ui.apiKeyInput.value.trim();
+        if (!apiKey) { logStatus('錯誤：請先輸入您的 Google Gemini API 金鑰。', 'error'); ui.apiKeyInput.focus(); return; }
+        if (!state.extractedText) { logStatus('錯誤：沒有可處理的文字內容。', 'error'); return; }
+        ui.startConversionBtn.disabled = true;
+        ui.startConversionBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> AI神處理中...`;
+        logStatus('正在聯繫 AI 進行內容重組，請稍候...');
+        try {
+            const [wordResponse, pptResponse] = await Promise.all([
+                callGeminiApi(generateWordPrompt(state.extractedText), apiKey),
+                callGeminiApi(generatePptPrompt(state.extractedText), apiKey)
+            ]);
+            ui.wordMarkdownEditor.value = jsonToWordMarkdown(JSON.parse(wordResponse));
+            logStatus('Word 大綱生成完畢。', 'success');
+            ui.pptMarkdownEditor.value = jsonToPptMarkdown(JSON.parse(pptResponse));
+            logStatus('PPT 大綱生成完畢。', 'success');
+            logStatus('AI 處理完成！您現在可以預覽、編輯並下載檔案。', 'success');
+            ui.downloadWordBtn.disabled = false;
+            ui.downloadPptBtn.disabled = false;
+        } catch (error) { logStatus(`AI 處理失敗: ${error.message}`, 'error'); }
+        finally {
+            ui.startConversionBtn.disabled = false;
+            ui.startConversionBtn.innerHTML = `<i class="fa-solid fa-brain"></i> 開始 AI 轉換`;
+        }
+    }
+
+    async function callGeminiApi(prompt, apiKey) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }) });
+        if (!response.ok) throw new Error((await response.json()).error?.message || 'API 請求失敗');
+        const data = await response.json();
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    function generateWordPrompt(text) { return `你是一個專業的文件處理助手。請將以下從PDF提取的純文字內容，重組成一份結構清晰的Word文件。- 識別標題、副標題、段落、列表（項目符號或編號）。- 盡可能保持原文語意。- 輸出格式必須是嚴格的JSON。JSON結構應為一個包含物件的陣列，每個物件代表一個文件元素，格式如下: { "type": "類型", "content": "內容", "level": 等級 } - "type" 的可能值為: "heading", "paragraph", "list_item"。- "level" 屬性僅用於 "heading"，代表標題級別 (1 for H1, 2 for H2, etc.)。- "content" 是文字內容。PDF文字內容如下:\n---\n${text}\n---`; }
+    function generatePptPrompt(text) { return `你是一個專業的簡報製作助手。請將以下從PDF提取的純文字內容，總結並濃縮成一份PowerPoint簡報的大綱。- 標題(title)應為短句。- 副標題(subtitle)可稍長。- 投影片標題(title)也應為短句。- 要點(bullets)應簡潔明瞭。- 輸出格式必須是嚴格的JSON。JSON結構應為一個物件，包含一個 "title_slide" 物件和一個 "content_slides" 陣列。- "title_slide" 物件應有 "title" 和 "subtitle" 兩個鍵。- "content_slides" 陣列中的每個物件代表一張投影片，應有 "title" 和 "bullets" (一個包含字串的陣列) 兩個鍵。PDF文字內容如下:\n---\n${text}\n---`; }
+    
+    function logStatus(message, type = 'info') {
+        const p = document.createElement('p');
+        const timestamp = new Date().toLocaleTimeString();
+        let colorClass = type === 'success' ? 'text-green-400' : type === 'error' ? 'text-red-400' : 'text-gray-400';
+        p.className = colorClass;
+        p.innerHTML = `&gt; <span class="text-gray-500">[${timestamp}]</span> ${message}`;
+        ui.statusLog.appendChild(p);
+        ui.statusLog.scrollTop = ui.statusLog.scrollHeight;
+    }
+
+    // --- Markdown & JSON Conversion ---
+    function jsonToWordMarkdown(data) { return data.map(item => { if (item.type === 'heading') return `${'#'.repeat(item.level || 1)} ${item.content}`; if (item.type === 'list_item') return `- ${item.content}`; return item.content; }).join('\n\n'); }
+    function jsonToPptMarkdown(data) { let md = `# ${data.title_slide.title || ''}\n## ${data.title_slide.subtitle || ''}\n\n`; md += data.content_slides.map(slide => { let slideMd = `### ${slide.title || ''}\n`; slideMd += (slide.bullets || []).map(bullet => `- ${bullet}`).join('\n'); return slideMd; }).join('\n\n---\n\n'); return md; }
+    function wordMarkdownToJson(md) { return md.split('\n').filter(line => line.trim() !== '').map(line => { if (line.startsWith('#')) { const level = line.match(/^#+/)[0].length; return { type: 'heading', level, content: line.replace(/^#+\s*/, '') }; } if (line.startsWith('- ')) return { type: 'list_item', content: line.substring(2) }; return { type: 'paragraph', content: line }; }); }
+    function pptMarkdownToJson(md) { const slides = md.split(/\n---\n/); const titleSlideMd = slides.shift().split('\n'); const title = (titleSlideMd[0] || '').replace(/^#\s*/, ''); const subtitle = (titleSlideMd[1] || '').replace(/^##\s*/, ''); const content_slides = slides.map(slideMd => { const lines = slideMd.trim().split('\n'); const title = (lines.shift() || '').replace(/^###\s*/, ''); const bullets = lines.map(line => line.replace(/^- \s*/, '')); return { title, bullets }; }); return { title_slide: { title, subtitle }, content_slides }; }
+
+    // --- File Generation Logic ---
+    async function handleWordDownload() {
+        const jsonData = wordMarkdownToJson(ui.wordMarkdownEditor.value);
+        if (!jsonData || jsonData.length === 0) { logStatus('沒有可生成的 Word 內容。', 'error'); return; }
+        logStatus('正在生成 Word (.docx) 檔案...');
+        const { Document, Packer, Paragraph, TextRun, HeadingLevel } = libraries.docx;
+        try {
+            const children = jsonData.map(item => {
+                if (item.type === 'heading') return new Paragraph({ heading: HeadingLevel[`HEADING_${item.level || 1}`], children: [new TextRun({ text: item.content, bold: true, size: 40 - (item.level || 1) * 4 })], spacing: { after: 120 } });
+                if (item.type === 'list_item') return new Paragraph({ text: item.content, bullet: { level: 0 }, indent: { left: 720, hanging: 360 } });
+                return new Paragraph({ children: [new TextRun(item.content)], spacing: { after: 120 } });
+            });
+            const blob = await Packer.toBlob(new Document({ sections: [{ children }] }));
+            libraries.saveAs(blob, `${state.fileName.replace('.pdf', '')}_word.docx`);
+            logStatus('Word 檔案下載成功。', 'success');
+        } catch(e) { logStatus(`生成 Word 時出錯: ${e.message}`, 'error'); }
+    }
+
+    async function handlePptDownload() {
+        const jsonData = pptMarkdownToJson(ui.pptMarkdownEditor.value);
+        if (!jsonData) { logStatus('沒有可生成的 PPT 內容。', 'error'); return; }
+        logStatus('正在生成 PPT (.pptx) 檔案 ( reverted to direct placement mode )...');
+        try {
+            const pptx = new libraries.PptxGenJS();
+            // Title slide
+            const titleSlide = pptx.addSlide();
+            titleSlide.addText(jsonData.title_slide.title || '簡報標題', { x: 0.5, y: 1.5, w: '90%', h: 1, fontSize: 44, bold: true, align: 'center', color: '00529B' });
+            titleSlide.addText(jsonData.title_slide.subtitle || '', { x: 0.5, y: 2.7, w: '90%', h: 1, fontSize: 24, align: 'center', color: '363636' });
+
+            // Content slides
+            jsonData.content_slides.forEach(slideData => {
+                const slide = pptx.addSlide();
+                slide.addText(slideData.title, { x: 0.5, y: 0.25, w: '90%', h: 1, fontSize: 32, bold: true, color: '00529B' });
+                if (slideData.bullets && slideData.bullets.length > 0) {
+                    slide.addText(slideData.bullets.join('\n'), { x: 0.5, y: 1.5, w: '90%', h: 4, fontSize: 20, bullet: true });
+                }
+            });
+            
+            // Final slide
+            const finalSlide = pptx.addSlide();
+            finalSlide.addText('感謝聆聽', { x: 0.5, y: 2.0, w:'90%', h:1, align: 'center', fontSize: 48, bold: true, color: '333333'});
+            
+            await pptx.writeFile({ fileName: `${state.fileName.replace('.pdf', '')}_ppt.pptx` });
+            logStatus('PPT 檔案下載成功。', 'success');
+        } catch(e) { logStatus(`生成 PPT 時出錯: ${e.message}`, 'error'); console.error(e); }
+    }
+
+    init();
+});
+</script>
+
+</body>
+</html>
