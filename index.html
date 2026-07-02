@@ -67,6 +67,15 @@
                     </div>
                     <input type="password" id="user-api-key" placeholder="貼上您的 API 金鑰" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
+                <div>
+                    <label for="api-model" class="block font-medium text-gray-700 mb-2">使用 AI 模型</label>
+                    <select id="api-model" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (最穩定推薦)</option>
+                        <option value="gemini-3.5-flash">Gemini 3.5 Flash (最新/偶爾 503 載量高)</option>
+                        <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (流暢備用)</option>
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    </select>
+                </div>
                 <div class="mt-auto">
                     <button id="start-conversion-btn" class="btn btn-primary w-full text-lg" disabled>
                         <i class="fa-solid fa-brain"></i> 開始AI神轉換
@@ -142,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pdfUpload: document.getElementById('pdf-upload'),
         pdfInfo: document.getElementById('pdf-info'),
         apiKeyInput: document.getElementById('user-api-key'),
+        apiModelSelect: document.getElementById('api-model'),
         statusLog: document.getElementById('status-log'),
         startConversionBtn: document.getElementById('start-conversion-btn'),
         downloadWordBtn: document.getElementById('download-word-btn'),
@@ -227,6 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.startConversionBtn.disabled = true;
         ui.downloadWordBtn.disabled = true;
         ui.downloadPptBtn.disabled = true;
+        if (ui.apiModelSelect) {
+            ui.apiModelSelect.value = 'gemini-2.5-flash';
+        }
     }
 
     async function startAiProcessing() {
@@ -256,7 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function callGeminiApi(prompt, apiKey) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const modelToUse = ui.apiModelSelect ? ui.apiModelSelect.value : 'gemini-2.5-flash';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKey}`;
         const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }) });
         if (!response.ok) throw new Error((await response.json()).error?.message || 'API 請求失敗');
         const data = await response.json();
